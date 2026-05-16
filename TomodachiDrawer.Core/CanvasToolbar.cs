@@ -159,7 +159,7 @@ namespace TomodachiDrawer.Core
                 // 7 wide 2 tall
                 for (int i = 0; i < BucketSubmenuRows - 1; i++)
                     output.Tap(DPad.UP);
-                for (int i = 0; i < BucketSubmenuRows - 1; i++)
+                for (int i = 0; i < BucketSubmenuColumns - 1; i++)
                     output.Tap(DPad.LEFT);
 
                 _bucketSubmenuHomed = true;

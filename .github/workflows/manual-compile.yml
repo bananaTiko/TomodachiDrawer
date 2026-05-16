@@ -1,0 +1,55 @@
+name: Manual Compile
+
+on:
+  workflow_dispatch:
+    inputs:
+      configuration:
+        description: Build configuration
+        required: true
+        default: Release
+        type: choice
+        options:
+          - Release
+          - Debug
+      runtime:
+        description: Runtime to publish
+        required: true
+        default: linux-x64
+        type: choice
+        options:
+          - win-x64
+          - win-arm64
+          - linux-x64
+          - linux-arm64
+          - osx-x64
+          - osx-arm64
+      upload-artifact:
+        description: Upload published output as an artifact
+        required: true
+        default: true
+        type: boolean
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v6
+    - uses: actions/setup-dotnet@v5
+      with:
+        dotnet-version: '10.0.x'
+        cache: true
+        cache-dependency-path: '**/*.csproj'
+    - name: Restore dependencies
+      run: dotnet restore -v n /p:EnableWindowsTargeting=true
+    - name: Build solution
+      run: dotnet build --configuration ${{ inputs.configuration }} --no-restore /p:EnableWindowsTargeting=true
+    - name: Publish desktop app
+      working-directory: TomodachiDrawer.UI.Avalonia
+      run: dotnet publish --configuration ${{ inputs.configuration }} -r ${{ inputs.runtime }} --self-contained -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true /p:EnableWindowsTargeting=true
+    - name: Upload compiled app
+      if: ${{ inputs.upload-artifact }}
+      uses: actions/upload-artifact@v7
+      with:
+        name: TomodachiDrawer-${{ inputs.runtime }}-${{ inputs.configuration }}
+        path: TomodachiDrawer.UI.Avalonia/bin/${{ inputs.configuration }}/net10.0/${{ inputs.runtime }}/publish/
