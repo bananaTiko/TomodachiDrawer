@@ -53,13 +53,13 @@ namespace TomodachiDrawer.Core
 
             int pixels = width * height;
             if (pixels <= squared64)
-                return 0.5f;
+                return 0.05f;
             else if (pixels <= squared128)
-                return 1.5f;
+                return 0.2f;
             else if (pixels <= squared192)
-                return 2.75f;
+                return 0.35f;
             else if (pixels <= squared256)
-                return 4.0f;
+                return 0.5f;
             else
             {
                 return 5.0f; // should ever reach here...
@@ -183,7 +183,18 @@ namespace TomodachiDrawer.Core
                     int sum = 0;
                     foreach (var l in layers)
                     {
-                        sum += DetectBucketZones(l, image.Width, image.Height);
+                        var (minZoneSize, minBucketClickSafety) = GetDynamicBucketHeuristics(
+                            l.FineDetailPoints.Count,
+                            image.Width,
+                            image.Height
+                        );
+                        sum += DetectBucketZones(
+                            l,
+                            image.Width,
+                            image.Height,
+                            minZoneSize,
+                            minBucketClickSafety
+                        );
                     }
                     _log($"\tFound {sum} dynamic bucket fill zones across image.");
                 }
@@ -316,9 +327,12 @@ namespace TomodachiDrawer.Core
 
                     _toolbar.SelectBucket();
                     // tsp solve the points
-                    var bucketClickRouteTimeout = 0.25f;
-                    if (l.BucketClicks.Count > 50)
-                        bucketClickRouteTimeout = 0.5f;
+                    // Spend slightly more solve time as click count grows. Better ordering reduces long cursor travel.
+                    var bucketClickRouteTimeout = Math.Clamp(
+                        0.1f + (l.BucketClicks.Count * 0.01f),
+                        0.1f,
+                        0.6f
+                    );
                     var optimizedBucketClickRoute = PerformTSP(
                         l.BucketClicks.ToList(),
                         bucketClickRouteTimeout
@@ -437,6 +451,37 @@ namespace TomodachiDrawer.Core
         // bigger ones fill more area so they get more slack.
         // TODO: MORE WORK TWEAKING THESE!!!
         private static readonly int[] LargeBrushEvictionThreshold = [1, 1, 2, 6, 12];
+
+
+        private static (int MinZoneSize, int MinBucketClickSafety) GetDynamicBucketHeuristics(
+            int layerPixelCount,
+            int width,
+            int height
+        )
+        {
+            int imagePixels = width * height;
+            if (imagePixels <= 0)
+                return (36, 2);
+
+            float layerCoverage = layerPixelCount / (float)imagePixels;
+
+            // More calculations here so we can tune bucket usage for speed:
+            // - Larger / denser layers benefit from more aggressive bucketing (smaller min zone).
+            // - Very sparse layers often create tiny islands, so require larger zones for bucketing.
+            int minZoneSize = layerCoverage switch
+            {
+                >= 0.20f => 20,
+                >= 0.10f => 28,
+                >= 0.04f => 36,
+                _ => 48,
+            };
+
+            // Keep safety stricter on sparse layers to reduce accidental spills,
+            // while allowing denser regions to bucket with lower overhead.
+            int minBucketClickSafety = layerCoverage >= 0.12f ? 2 : 3;
+
+            return (minZoneSize, minBucketClickSafety);
+        }
 
         public static int DetectBucketZones(
             ColourLayer l,

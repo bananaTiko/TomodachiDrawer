@@ -33,6 +33,11 @@
 					Click="CheckForUpdatesCheckBox_Click"
 				/>
 			</MenuItem>
+			<MenuItem Header="_Tools">
+				<MenuItem x:Name="MenuToolsOpenColourToHSVStepsTool"
+						  Header="_Convert Colour to HSV Steps"
+						  Click="MenuToolsOpenColourToHSVStepsTool_Click" />
+			</MenuItem>
 			<MenuItem Header="_Help">
 				<MenuItem 
 					x:Name="MenuHelpOpenGitHub"
@@ -77,6 +82,19 @@
 									Content="Open..."
 									Margin="4,0,0,0"
 									Click="OpenImageButton_Click" />
+						</Grid>
+						<Grid ColumnDefinitions="Auto,*" ColumnSpacing="6">
+							<TextBlock Grid.Column="0" Text="Preset:" VerticalAlignment="Center" />
+							<ComboBox Grid.Column="1" x:Name="ImagePresetComboBox"
+									  HorizontalAlignment="Stretch"
+									  SelectedIndex="0"
+									  SelectionChanged="ImagePresetComboBox_SelectionChanged">
+								<ComboBoxItem>Square (256x256)</ComboBoxItem>
+								<ComboBoxItem>Poster (180x256)</ComboBoxItem>
+								<ComboBoxItem>TV Screen (256x131)</ComboBoxItem>
+								<ComboBoxItem>Video Game (256x144)</ComboBoxItem>
+								<ComboBoxItem>Interior (172x256)</ComboBoxItem>
+							</ComboBox>
 						</Grid>
 					</StackPanel>
 				</Border>
@@ -125,9 +143,9 @@
 							<TextBlock Text="TSP Solver Time Limit"
 									   VerticalAlignment="Center" />
 							<NumericUpDown x:Name="TSPTimeLimitUpDown"
-										   Minimum="0.1" Maximum="30"
-										   Increment="0.1" Value="0.5"
-										   FormatString="F1"
+										   Minimum="0.00" Maximum="10"
+										   Increment="0.01" Value="0.05"
+										   FormatString="F2"
 										   Width="110"
 										   ValueChanged="TSPTimeLimitUpDown_ValueChanged" />
 							<TextBlock Text="seconds"
@@ -215,9 +233,10 @@
 
 			<Border Grid.Column="1" Classes="group" Margin="0,0,6,0">
 				<DockPanel>
-					<TextBlock DockPanel.Dock="Top"
-							   Classes="header"
-							   Text="Preview" />
+					<Grid DockPanel.Dock="Top">
+						<TextBlock Classes="header" Text="Preview" />
+						<TextBlock x:Name="ImageDimensionsLabel" Text="" HorizontalAlignment="Right" VerticalAlignment="Center" FontWeight="SemiBold" />
+					</Grid>
 					<Grid DockPanel.Dock="Top" Margin="0,0,0,6">
 						<Grid.ColumnDefinitions>
 							<ColumnDefinition Width="Auto" />
@@ -247,7 +266,7 @@
 						<NumericUpDown Grid.Column="4"
 									   x:Name="ColourLimitUpDown"
 									   Minimum="1" Maximum="256"
-									   Increment="1" Value="16"
+									   Increment="1" Value="12"
 									   FormatString="F0"
 									   HorizontalAlignment="Stretch"
 									   Margin="0,0,8,0"
@@ -262,10 +281,12 @@
 								  IsEnabled="True"
 								  HorizontalAlignment="Stretch" />
 					</Grid>
-					<Image x:Name="PreviewImage"
-						   Stretch="Uniform"
-						   Source="avares://TomodachiDrawer.UI.Avalonia/Assets/NoImagePlaceholder.png"
-						   RenderOptions.BitmapInterpolationMode="None" />
+					<Border Background="Black" VerticalAlignment="Stretch" HorizontalAlignment="Stretch">
+						<Image x:Name="PreviewImage"
+							   Stretch="Uniform"
+							   Source="avares://TomodachiDrawer.UI.Avalonia/Assets/NoImagePlaceholder.png"
+							   RenderOptions.BitmapInterpolationMode="None" />
+					</Border>
 				</DockPanel>
 			</Border>
 		</Grid>
