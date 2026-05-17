@@ -175,9 +175,6 @@ public partial class MainWindow : Window
                 {
                     bool hasImage = !string.IsNullOrEmpty(_currentImagePath);
 
-                    // ExportUF2 only needs an image — no RP2040 required
-                    ExportUF2Button.IsEnabled = hasImage;
-
                     if (path != null)
                     {
                         RP2040StatusLabel.Text = $"RP2040 found: {path}";
@@ -599,8 +596,9 @@ public partial class MainWindow : Window
         var denoiser = DenoisingComboBox.SelectedItem?.ToString();
         var tspLimit = (float)(TSPTimeLimitUpDown.Value ?? 0.5m);
 
-        ExportUF2Button.IsEnabled = false;
         BusyExporting = true;
+        UpdateFirmwareButtons();
+
         TimeSpan totalTime = TimeSpan.MaxValue;
         var settings = GetQuantizerSettings();
         var enableExperimental = EnableExperimentalCheckBox.IsChecked ?? false;
@@ -650,8 +648,8 @@ public partial class MainWindow : Window
             totalTime = timingSink.TotalTime;
         });
 
-        ExportUF2Button.IsEnabled = true;
         BusyExporting = false;
+        UpdateFirmwareButtons();
 
         SetEstimate(totalTime);
     }
@@ -863,7 +861,6 @@ public partial class MainWindow : Window
                     ColourLimitUpDown.Value = _currentSettings.ColourLimit;
                     TSPTimeLimitUpDown.Value = _currentSettings.TSPTimeLimit;
                     ImagePresetComboBox.SelectedIndex = _currentSettings.SelectedPresetIndex;
-                    return;
                 }
             }
             catch (Exception)
@@ -873,7 +870,19 @@ public partial class MainWindow : Window
         }
 
         // if no images or we fail, fall to defaults in the appsettings class.
-        _currentSettings = new AppSettings();
+        _currentSettings ??= new AppSettings();
+
+        SwitchVersionComboBox.SelectedIndex =
+            (int)_currentSettings.SelectedSwitchVersion - 1;
+        SetTheme(_currentSettings.SelectedThemeIndex);
+        AppThemeComboBox.SelectedIndex = _currentSettings.SelectedThemeIndex;
+
+        EnableExperimentalCheckBox.IsChecked =
+            _currentSettings.EnableExperimentalFeatures;
+        CheckForUpdatesCheckBox.IsChecked = _currentSettings.CheckForUpdatesOnStart;
+        ColourLimitUpDown.Value = _currentSettings.ColourLimit;
+        TSPTimeLimitUpDown.Value = _currentSettings.TSPTimeLimit;
+        ImagePresetComboBox.SelectedIndex = _currentSettings.SelectedPresetIndex;
     }
 
     // TODO: replace _selectedSwitchVersion and _selectedThemeIndex with just a instance of
