@@ -8,7 +8,7 @@ namespace TomodachiDrawer.Core.Models
 
         public string? DenoiserName { get; set; } = null;
 
-        public float TSPTimeLimit { get; set; } = 1.0f;
+        public float TSPTimeLimit { get; set; } = 0.05f;
 
         /// <summary>Disables "stamp" detection, which is areas that could be drawn with 3x3, 5x5, 9x9, etc brushes to save time.</summary>
         public bool DisableLargeBrush { get; set; } = false;

@@ -143,8 +143,8 @@
 							<TextBlock Text="TSP Solver Time Limit"
 									   VerticalAlignment="Center" />
 							<NumericUpDown x:Name="TSPTimeLimitUpDown"
-										   Minimum="0.01" Maximum="30"
-										   Increment="0.05" Value="0.2"
+										   Minimum="0.00" Maximum="10"
+										   Increment="0.01" Value="0.05"
 										   FormatString="F2"
 										   Width="110"
 										   ValueChanged="TSPTimeLimitUpDown_ValueChanged" />
@@ -266,7 +266,7 @@
 						<NumericUpDown Grid.Column="4"
 									   x:Name="ColourLimitUpDown"
 									   Minimum="1" Maximum="256"
-									   Increment="1" Value="16"
+									   Increment="1" Value="12"
 									   FormatString="F0"
 									   HorizontalAlignment="Stretch"
 									   Margin="0,0,8,0"
