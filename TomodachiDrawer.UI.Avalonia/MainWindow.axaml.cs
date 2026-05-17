@@ -350,6 +350,17 @@ public partial class MainWindow : Window
         });
     }
 
+
+    private void UpdateFirmwareButtons()
+    {
+        bool hasImage = !string.IsNullOrEmpty(_currentImagePath);
+        bool boardConnected = UF2Flasher.FindRP2040Drive() != null;
+
+        FlashFirmwareButton.IsEnabled = boardConnected && !BusyExporting;
+        ExportRP2040Button.IsEnabled = boardConnected && hasImage && !BusyExporting;
+        ExportUF2Button.IsEnabled = hasImage && !BusyExporting;
+    }
+
     // messagebox replacement
     private async Task ShowMessageAsync(
         string title,
