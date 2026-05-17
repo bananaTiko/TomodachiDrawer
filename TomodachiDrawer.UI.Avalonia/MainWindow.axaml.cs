@@ -455,7 +455,7 @@ public partial class MainWindow : Window
             + "TSP refers to the Travelling Sales Person problem, which is finding the optimal route among a set of points.\n"
             + "This is used to find the optimal path for the pen tool to take while drawing to minimize drawing time.\n\n"
             + "For larger images, the TSP solver can take longer to find an optimal route, its also possible it will never even find an optimal route if there is too many points.\n"
-            + "For 64x64, 0.5s is generally fine, anything largest you should consider giving it more time.\n\n"
+            + "For 64x64, 0.2s is generally fine if you want faster outputs. Increase it when you want better path optimization.\n\n"
             + "This time is how long it is alloted PER colour, so if an image has 30 different colours used, 0.5s will take 15 seconds.\n"
             + "The TSP solve is not used always, a simpler \"snaking\" algorithm is used if its quicker, or if TSP didnt find anything in time, which it sometimes is, mostly for large continuous areas of colour.";
 
@@ -491,7 +491,7 @@ public partial class MainWindow : Window
 
         var imagePath = _currentImagePath;
         var denoiser = DenoisingComboBox.SelectedItem?.ToString();
-        var tspLimit = (float)(TSPTimeLimitUpDown.Value ?? 0.5m);
+        var tspLimit = (float)(TSPTimeLimitUpDown.Value ?? 0.2m);
 
         BusyExporting = true;
         ExportRP2040Button.IsEnabled = false;
@@ -594,7 +594,7 @@ public partial class MainWindow : Window
 
         var imagePath = _currentImagePath;
         var denoiser = DenoisingComboBox.SelectedItem?.ToString();
-        var tspLimit = (float)(TSPTimeLimitUpDown.Value ?? 0.5m);
+        var tspLimit = (float)(TSPTimeLimitUpDown.Value ?? 0.2m);
 
         BusyExporting = true;
         UpdateFirmwareButtons();
@@ -798,7 +798,7 @@ public partial class MainWindow : Window
         NumericUpDownValueChangedEventArgs e
     )
     {
-        _currentSettings.TSPTimeLimit = TSPTimeLimitUpDown.Value ?? 0.5m;
+        _currentSettings.TSPTimeLimit = TSPTimeLimitUpDown.Value ?? 0.2m;
         SaveSettings();
     }
 
@@ -948,7 +948,7 @@ public partial class MainWindow : Window
 
         public int ColourLimit { get; set; } = 16;
 
-        public decimal TSPTimeLimit { get; set; } = 0.5m;
+        public decimal TSPTimeLimit { get; set; } = 0.2m;
 
         public int SelectedPresetIndex { get; set; } = 0;
     }

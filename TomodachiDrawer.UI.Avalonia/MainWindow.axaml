@@ -143,9 +143,9 @@
 							<TextBlock Text="TSP Solver Time Limit"
 									   VerticalAlignment="Center" />
 							<NumericUpDown x:Name="TSPTimeLimitUpDown"
-										   Minimum="0.1" Maximum="30"
-										   Increment="0.1" Value="0.5"
-										   FormatString="F1"
+										   Minimum="0.01" Maximum="30"
+										   Increment="0.05" Value="0.2"
+										   FormatString="F2"
 										   Width="110"
 										   ValueChanged="TSPTimeLimitUpDown_ValueChanged" />
 							<TextBlock Text="seconds"
