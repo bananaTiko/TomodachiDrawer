@@ -712,7 +712,21 @@ public partial class MainWindow : Window
     private void ColourLimitUpDown_ValueChanged(
         object? sender,
         NumericUpDownValueChangedEventArgs e
-    ) => UpdatePreview();
+    )
+    {
+        _currentSettings.ColourLimit = (int)(ColourLimitUpDown.Value ?? 16m);
+        SaveSettings();
+        UpdatePreview();
+    }
+
+    private void TSPTimeLimitUpDown_ValueChanged(
+        object? sender,
+        NumericUpDownValueChangedEventArgs e
+    )
+    {
+        _currentSettings.TSPTimeLimit = TSPTimeLimitUpDown.Value ?? 0.5m;
+        SaveSettings();
+    }
 
     private void AppThemeComboBox_SelectionChanged(object? sender, SelectionChangedEventArgs e)
     {
@@ -790,6 +804,8 @@ public partial class MainWindow : Window
                     EnableExperimentalCheckBox.IsChecked =
                         _currentSettings.EnableExperimentalFeatures;
                     CheckForUpdatesCheckBox.IsChecked = _currentSettings.CheckForUpdatesOnStart;
+                    ColourLimitUpDown.Value = _currentSettings.ColourLimit;
+                    TSPTimeLimitUpDown.Value = _currentSettings.TSPTimeLimit;
                     return;
                 }
             }
@@ -814,6 +830,10 @@ public partial class MainWindow : Window
         public bool EnableExperimentalFeatures { get; set; } = false;
 
         public bool CheckForUpdatesOnStart { get; set; } = true;
+
+        public int ColourLimit { get; set; } = 16;
+
+        public decimal TSPTimeLimit { get; set; } = 0.5m;
     }
 
     private void SwitchVersionComboBox_SelectionChanged(object? sender, SelectionChangedEventArgs e)
