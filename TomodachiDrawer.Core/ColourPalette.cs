@@ -296,6 +296,12 @@ namespace TomodachiDrawer.Core
 
         private PaletteColour? _lastColour = null;
 
+        public void SelectBlack(double speed)
+        {
+            var black = Colours.First(c => c.Name == "Black");
+            SelectColour(black, speed);
+        }
+
         public void SelectColour(PaletteColour target, double speed)
         {
             if (_lastColour != null && _lastColour == target)
@@ -319,9 +325,17 @@ namespace TomodachiDrawer.Core
             _realOutput.Tap(Button.Y, speed, speed);
             _realOutput.Delay(400);
 
-            // Now in the colour menu. What tab? Shrug!
+            // Now in the colour menu. Track the active tab so grid moves are applied on the palette tab.
             if (!target.IsArbitrary && target.GridX != null && target.GridY != null)
             {
+                if (_lastWasArbitrary)
+                {
+                    // Return from the full-colour tab before using stored grid coordinates.
+                    _realOutput.Tap(Button.L, speed, speed);
+                    _realOutput.Delay(400);
+                    _lastWasArbitrary = false;
+                }
+
                 // Move to right spot, from the
                 int deltaX = (int)target.GridX - _lastGridX;
                 int deltaY = (int)target.GridY - _lastGridY;
@@ -345,7 +359,10 @@ namespace TomodachiDrawer.Core
             {
                 if (!_lastWasArbitrary)
                 {
-                    _realOutput.Tap(Button.R);
+                    // Move to the full-colour tab once and remember it for future arbitrary colours.
+                    _realOutput.Tap(Button.R, speed, speed);
+                    _realOutput.Delay(400);
+                    _lastWasArbitrary = true;
                 }
 
                 // TLDR: The RGB needs to be Linearized from sRGB then turned to HSV.
