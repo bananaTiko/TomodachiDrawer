@@ -28,9 +28,19 @@ namespace TomodachiDrawer.UI.Avalonia;
 public partial class MainWindow : Window
 {
     private const string firmwareFileName = "TomodachiDrawer.Firmware.uf2";
-
+    
     private string _currentImagePath = string.Empty;
+    private string _originalImagePath = string.Empty;
     private readonly CancellationTokenSource _cts = new();
+
+    private readonly (int Width, int Height)[] _presets =
+    [
+        (256, 256), // Square
+        (180, 256), // Poster
+        (256, 131), // TV Screen
+        (256, 144), // Video Game
+        (172, 256), // Interior
+    ];
 
     private bool BusyExporting = false;
 
@@ -199,9 +209,6 @@ public partial class MainWindow : Window
                 {
                     bool hasImage = !string.IsNullOrEmpty(_currentImagePath);
 
-                    // ExportUF2 only needs an image — no RP2040 required
-                    ExportUF2Button.IsEnabled = hasImage;
-
                     if (path != null)
                     {
                         RP2040StatusLabel.Text = $"RP2040 found: {path}";
@@ -253,19 +260,44 @@ public partial class MainWindow : Window
             return;
         }
 
-        var img = SKBitmap.Decode(path);
-        if (img == null)
+        _originalImagePath = path;
+        ImagePathBox.Text = path;
+
+        UpdateProcessedImage();
+    }
+
+    private void UpdateProcessedImage()
+    {
+        if (string.IsNullOrEmpty(_originalImagePath))
+            return;
+
+        if (ImagePresetComboBox == null || ImagePresetComboBox.SelectedIndex < 0)
         {
-            AppendLog($"Failed to decode image: {path}");
+            AppendLog("Cannot process image: No preset selected.");
             return;
         }
 
-        if (img.Width > 256 || img.Height > 256)
+        var img = SKBitmap.Decode(_originalImagePath);
+        if (img == null)
         {
-            float scale = Math.Min(256f / img.Width, 256f / img.Height);
-            int newWidth = (int)(img.Width * scale);
-            int newHeight = (int)(img.Height * scale);
+            AppendLog($"Failed to decode image: {_originalImagePath}");
+            return;
+        }
 
+        var presetIndex = ImagePresetComboBox.SelectedIndex;
+        if (presetIndex < 0 || presetIndex >= _presets.Length)
+        {
+            AppendLog($"Invalid preset index: {presetIndex}");
+            img.Dispose();
+            return;
+        }
+
+        var preset = _presets[presetIndex];
+        int newWidth = preset.Width;
+        int newHeight = preset.Height;
+
+        try
+        {
             var resized = img.Resize(
                 new SKImageInfo(newWidth, newHeight),
                 new SKSamplingOptions(SKCubicResampler.CatmullRom)
@@ -275,23 +307,32 @@ public partial class MainWindow : Window
 
             string tempPath = Path.Combine(
                 Path.GetTempPath(),
-                $"tomodachi_{Path.GetFileName(path)}"
+                $"tomodachi_{Guid.NewGuid()}.png"
             );
             using var data = SKImage.FromBitmap(img).Encode(SKEncodedImageFormat.Png, 100);
-            using var stream = File.OpenWrite(tempPath);
+            using var stream = File.Create(tempPath);
             data.SaveTo(stream);
 
-            path = tempPath;
-            AppendLog($"Image resized to {newWidth}x{newHeight}, saved to temp: {tempPath}");
+            _currentImagePath = tempPath;
+            AppendLog($"Image processed to {newWidth}x{newHeight}");
+        }
+        catch (Exception ex)
+        {
+            AppendLog($"Error during image processing: {ex.Message}");
+            img.Dispose();
+            return;
         }
 
-        _currentImagePath = path;
-        ImagePathBox.Text = path;
+        if (ImageDimensionsLabel != null)
+            ImageDimensionsLabel.Text = $"{img.Width}x{img.Height}";
+
         ExportUF2Button.IsEnabled = true;
         UpdatePreview();
-        TSPTimeLimitUpDown.Value = (decimal)
-            CanvasDrawer.GetRecommendedTSPSolveTime(img.Width, img.Height);
-        AppendLog($"Loaded image: {Path.GetFileName(path)} ({img.Width}x{img.Height})");
+        
+        if (TSPTimeLimitUpDown != null)
+            TSPTimeLimitUpDown.Value = (decimal)
+                CanvasDrawer.GetRecommendedTSPSolveTime(img.Width, img.Height);
+        
         img.Dispose();
     }
 
@@ -341,6 +382,17 @@ public partial class MainWindow : Window
             LogBox.Text = (LogBox.Text ?? "") + msg + "\n";
             LogBox.CaretIndex = LogBox.Text?.Length ?? 0;
         });
+    }
+
+
+    private void UpdateFirmwareButtons()
+    {
+        bool hasImage = !string.IsNullOrEmpty(_currentImagePath);
+        bool boardConnected = UF2Flasher.FindRP2040Drive() != null;
+
+        FlashFirmwareButton.IsEnabled = boardConnected && !BusyExporting;
+        ExportRP2040Button.IsEnabled = boardConnected && hasImage && !BusyExporting;
+        ExportUF2Button.IsEnabled = hasImage && !BusyExporting;
     }
 
     // messagebox replacement
@@ -448,7 +500,7 @@ public partial class MainWindow : Window
             + "TSP refers to the Travelling Sales Person problem, which is finding the optimal route among a set of points.\n"
             + "This is used to find the optimal path for the pen tool to take while drawing to minimize drawing time.\n\n"
             + "For larger images, the TSP solver can take longer to find an optimal route, its also possible it will never even find an optimal route if there is too many points.\n"
-            + "For 64x64, 0.5s is generally fine, anything largest you should consider giving it more time.\n\n"
+            + "For 64x64, 0.05s is generally fine for very fast outputs. Increase it if you want better path optimization.\n\n"
             + "This time is how long it is alloted PER colour, so if an image has 30 different colours used, 0.5s will take 15 seconds.\n"
             + "The TSP solve is not used always, a simpler \"snaking\" algorithm is used if its quicker, or if TSP didnt find anything in time, which it sometimes is, mostly for large continuous areas of colour.";
 
@@ -484,7 +536,7 @@ public partial class MainWindow : Window
 
         var imagePath = _currentImagePath;
         var denoiser = DenoisingComboBox.SelectedItem?.ToString();
-        var tspLimit = (float)(TSPTimeLimitUpDown.Value ?? 0.5m);
+        var tspLimit = (float)(TSPTimeLimitUpDown.Value ?? 0.05m);
 
         BusyExporting = true;
         ExportRP2040Button.IsEnabled = false;
@@ -587,10 +639,11 @@ public partial class MainWindow : Window
 
         var imagePath = _currentImagePath;
         var denoiser = DenoisingComboBox.SelectedItem?.ToString();
-        var tspLimit = (float)(TSPTimeLimitUpDown.Value ?? 0.5m);
+        var tspLimit = (float)(TSPTimeLimitUpDown.Value ?? 0.05m);
 
-        ExportUF2Button.IsEnabled = false;
         BusyExporting = true;
+        UpdateFirmwareButtons();
+
         TimeSpan totalTime = TimeSpan.MaxValue;
         var settings = GetQuantizerSettings();
         var enableExperimental = EnableExperimentalCheckBox.IsChecked ?? false;
@@ -640,13 +693,13 @@ public partial class MainWindow : Window
             totalTime = timingSink.TotalTime;
         });
 
-        ExportUF2Button.IsEnabled = true;
         BusyExporting = false;
+        UpdateFirmwareButtons();
 
         SetEstimate(totalTime);
     }
 
-    private static string GetBaseFirmwareFilePath()
+    private string GetBaseFirmwareFilePath()
     {
         // Check if we're running on macOS and the app is running from app bundle, not CLI.
         var baseDirectory = AppContext.BaseDirectory;
@@ -763,10 +816,36 @@ public partial class MainWindow : Window
             LoadImage(first.TryGetLocalPath() ?? "");
     }
 
+    private void ImagePresetComboBox_SelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (ImagePresetComboBox == null)
+            return;
+        _currentSettings.SelectedPresetIndex = ImagePresetComboBox.SelectedIndex;
+        SaveSettings();
+        if (!string.IsNullOrEmpty(_originalImagePath))
+        {
+            UpdateProcessedImage();
+        }
+    }
+
     private void ColourLimitUpDown_ValueChanged(
         object? sender,
         NumericUpDownValueChangedEventArgs e
-    ) => UpdatePreview();
+    )
+    {
+        _currentSettings.ColourLimit = (int)(ColourLimitUpDown.Value ?? 16m);
+        SaveSettings();
+        UpdatePreview();
+    }
+
+    private void TSPTimeLimitUpDown_ValueChanged(
+        object? sender,
+        NumericUpDownValueChangedEventArgs e
+    )
+    {
+        _currentSettings.TSPTimeLimit = TSPTimeLimitUpDown.Value ?? 0.05m;
+        SaveSettings();
+    }
 
     private void AppThemeComboBox_SelectionChanged(object? sender, SelectionChangedEventArgs e)
     {
@@ -835,26 +914,65 @@ public partial class MainWindow : Window
         }
     }
 
+    private string GetSettingsFilePath()
+    {
+        const string settingsFileName = "settings.json";
+
+        // Check if we're running on macOS and the app is running from the app bundle, not CLI.
+        if (OperatingSystem.IsMacOS() && AppContext.BaseDirectory.Contains(".app/Contents/MacOS"))
+        {
+            // In macOS, when you launch `.app` from Finder, the current working directory is root directory `/` (Gemini said),
+            // which is read-only and not a good place to store our settings file.
+            // We need to place the settings file somewhere else.
+            // `~/Library/Application Support` is a common place to store app data on macOS (like `%APPDATA%` on Windows).
+            // So first, ensure `~/Library/Application Support/TomodachiDrawer` exists
+            var appDataFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "TomodachiDrawer");
+            if (!Directory.Exists(appDataFolder))
+            {
+                Directory.CreateDirectory(appDataFolder);
+            }
+            // Returns `~/Library/Application Support/TomodachiDrawer/settings.json`
+            return Path.Combine(appDataFolder, settingsFileName);
+        }
+        else
+        {
+            // Simply place it in the current working directory
+            return settingsFileName;
+        }
+    }
+
     private void SaveSettings()
     {
-        var json = JsonSerializer.Serialize(_currentSettings, AppSettingsContext.Default.AppSettings);
+        var json = JsonSerializer.Serialize(_currentSettings, _jsonOptions);
         File.WriteAllText(GetSettingsFilePath(), json);
     }
 
     private void GetSettings()
     {
-        var settingsFilePath = GetSettingsFilePath();
-
+        var settingsFilePath =  GetSettingsFilePath();
+        
         if (File.Exists(settingsFilePath))
         {
             try
             {
                 var json = File.ReadAllText(settingsFilePath);
-                var settings = JsonSerializer.Deserialize(json, AppSettingsContext.Default.AppSettings);
+                var settings = JsonSerializer.Deserialize<AppSettings>(json);
 
                 if (settings != null)
                 {
                     _currentSettings = settings;
+
+                    SwitchVersionComboBox.SelectedIndex =
+                        (int)_currentSettings.SelectedSwitchVersion - 1;
+                    SetTheme(_currentSettings.SelectedThemeIndex);
+                    AppThemeComboBox.SelectedIndex = _currentSettings.SelectedThemeIndex;
+
+                    EnableExperimentalCheckBox.IsChecked =
+                        _currentSettings.EnableExperimentalFeatures;
+                    CheckForUpdatesCheckBox.IsChecked = _currentSettings.CheckForUpdatesOnStart;
+                    ColourLimitUpDown.Value = _currentSettings.ColourLimit;
+                    TSPTimeLimitUpDown.Value = _currentSettings.TSPTimeLimit;
+                    ImagePresetComboBox.SelectedIndex = _currentSettings.SelectedPresetIndex;
                 }
             }
             catch (Exception)
@@ -874,6 +992,27 @@ public partial class MainWindow : Window
         EnableExperimentalCheckBox.IsChecked =
             _currentSettings.EnableExperimentalFeatures;
         CheckForUpdatesCheckBox.IsChecked = _currentSettings.CheckForUpdatesOnStart;
+        ColourLimitUpDown.Value = _currentSettings.ColourLimit;
+        TSPTimeLimitUpDown.Value = _currentSettings.TSPTimeLimit;
+        ImagePresetComboBox.SelectedIndex = _currentSettings.SelectedPresetIndex;
+    }
+
+        SwitchVersionComboBox.SelectedIndex =
+            (int)_currentSettings.SelectedSwitchVersion - 1;
+        SetTheme(_currentSettings.SelectedThemeIndex);
+        AppThemeComboBox.SelectedIndex = _currentSettings.SelectedThemeIndex;
+
+        public int SelectedThemeIndex { get; set; } = 0;
+
+        public bool EnableExperimentalFeatures { get; set; } = false;
+
+        public bool CheckForUpdatesOnStart { get; set; } = true;
+
+        public int ColourLimit { get; set; } = 12;
+
+        public decimal TSPTimeLimit { get; set; } = 0.05m;
+
+        public int SelectedPresetIndex { get; set; } = 0;
     }
 
     private void SwitchVersionComboBox_SelectionChanged(object? sender, SelectionChangedEventArgs e)
