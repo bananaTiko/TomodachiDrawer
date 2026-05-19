@@ -355,37 +355,6 @@ namespace TomodachiDrawer.Core
                 return count < LargeBrushEvictionThreshold_200[index];
         }
 
-
-        private static (int MinZoneSize, int MinBucketClickSafety) GetDynamicBucketHeuristics(
-            int layerPixelCount,
-            int width,
-            int height
-        )
-        {
-            int imagePixels = width * height;
-            if (imagePixels <= 0)
-                return (36, 2);
-
-            float layerCoverage = layerPixelCount / (float)imagePixels;
-
-            // More calculations here so we can tune bucket usage for speed:
-            // - Larger / denser layers benefit from more aggressive bucketing (smaller min zone).
-            // - Very sparse layers often create tiny islands, so require larger zones for bucketing.
-            int minZoneSize = layerCoverage switch
-            {
-                >= 0.20f => 20,
-                >= 0.10f => 28,
-                >= 0.04f => 36,
-                _ => 48,
-            };
-
-            // Keep safety stricter on sparse layers to reduce accidental spills,
-            // while allowing denser regions to bucket with lower overhead.
-            int minBucketClickSafety = layerCoverage >= 0.12f ? 2 : 3;
-
-            return (minZoneSize, minBucketClickSafety);
-        }
-
         public static int DetectBucketZones(
             ColourLayer l,
             int width,
