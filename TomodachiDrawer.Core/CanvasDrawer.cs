@@ -78,15 +78,6 @@ namespace TomodachiDrawer.Core
                 nameof(settings.TSPTimeLimit)
             );
 
-            // TODO: Basic -> Pro mode auto-switch is intentionally commented out for now.
-            // This input sequence has not been verified across Switch versions/game states, and
-            // a bad mode-toggle sequence before drawing would desync every later cursor input.
-            // If this is validated, uncomment the call and helper below so exports can attempt
-            // to put basic-mode users into pro mode before any drawing begins.
-            //
-            // _log("Attempting to switch drawing UI from Basic mode to Pro mode...");
-            // SwitchBasicModeToProMode();
-
             // Stages:
             // 1: Perform Color quantization to the tomodachi life pallete
             // 2: Split colors into distinct ColorLayers/passes (undecided on which)
@@ -164,19 +155,6 @@ namespace TomodachiDrawer.Core
 
             if (settings.EnableExperimentalFeatures)
             {
-                if (bucketColour is null || IsBlankCanvasColour(bucketColour.Value))
-                {
-                    int skippedWhiteRegions = RemoveEnclosedBlankCanvasRegions(
-                        layers,
-                        image.Width,
-                        image.Height
-                    );
-                    if (skippedWhiteRegions > 0)
-                        _log(
-                            $"\tSkipped {skippedWhiteRegions} enclosed white canvas regions that are already bounded by other colours."
-                        );
-                }
-
                 if (_switchVersion == SwitchVersion.Switch2)
                 {
                     _log("Finding large bucket-fillable zones...");
@@ -341,116 +319,41 @@ namespace TomodachiDrawer.Core
                     {
                         NavigateTo(_realOutput, click);
                         _realOutput.Tap(Button.A);
-                        _realOutput.ReleaseAll();
-                        _realOutput.Delay(1000); // Bucket fill can stutter; wait before moving so the next click does not desync.
+                        _realOutput.Delay(500); // Bit generous given this is now switch 2 only but justtttt in case the switch struggles with the flood fill :p
                     }
                 }
             }
-            _log("Resetting selected colour to black...");
-            _palette.SelectBlack(25.0);
-
             _log(
-                $"Done! Total in layer draw time: {totalInLayerTime:F3}s (Doesnt include colour/brush selection)"
+                $"Done routing!"
             );
-        }
-
-        private static bool IsBlankCanvasColour(PaletteColour colour) =>
-            !colour.IsArbitrary && colour.R == 255 && colour.G == 255 && colour.B == 255;
-
-        private static int RemoveEnclosedBlankCanvasRegions(
-            List<ColourLayer> layers,
-            int width,
-            int height
-        )
-        {
-            var whiteLayer = layers.FirstOrDefault(l => IsBlankCanvasColour(l.Colour));
-            if (whiteLayer is null || whiteLayer.FineDetailPoints.Count == 0)
-                return 0;
-
-            var remainingPoints = new bool[width, height];
-            foreach (var point in whiteLayer.FineDetailPoints)
-                remainingPoints[point.X, point.Y] = true;
-
-            var visited = new bool[width, height];
-            int[] dx = { 0, 0, -1, 1 };
-            int[] dy = { -1, 1, 0, 0 };
-            int skippedRegions = 0;
-
-            foreach (var seed in whiteLayer.FineDetailPoints.ToList())
-            {
-                if (visited[seed.X, seed.Y])
-                    continue;
-
-                var currentRegion = new List<CanvasPoint>();
-                var q = new Queue<CanvasPoint>();
-                bool touchesCanvasEdge = false;
-
-                q.Enqueue(seed);
-                visited[seed.X, seed.Y] = true;
-
-                while (q.Count > 0)
-                {
-                    var current = q.Dequeue();
-                    currentRegion.Add(current);
-                    touchesCanvasEdge |=
-                        current.X == 0
-                        || current.Y == 0
-                        || current.X == width - 1
-                        || current.Y == height - 1;
-
-                    for (int i = 0; i < 4; i++)
-                    {
-                        int tx = current.X + dx[i];
-                        int ty = current.Y + dy[i];
-                        if (
-                            tx >= 0
-                            && tx < width
-                            && ty >= 0
-                            && ty < height
-                            && remainingPoints[tx, ty]
-                            && !visited[tx, ty]
-                        )
-                        {
-                            visited[tx, ty] = true;
-                            q.Enqueue(new CanvasPoint(tx, ty));
-                        }
-                    }
-                }
-
-                // The canvas starts white, so an enclosed white component bounded by other colours
-                // is already correct once those boundary colours are drawn. Drawing a white outline
-                // before bucket-filling it only adds time and can overwrite the enclosing outline.
-                if (!touchesCanvasEdge)
-                {
-                    foreach (var point in currentRegion)
-                        whiteLayer.FineDetailPoints.Remove(point);
-                    skippedRegions++;
-                }
-            }
-
-            if (whiteLayer.FineDetailPoints.Count == 0)
-            {
-                layers.Remove(whiteLayer);
-            }
-            else if (skippedRegions > 0)
-            {
-                whiteLayer.Extents = new LayerExtents(
-                    whiteLayer.FineDetailPoints.Min(p => p.X),
-                    whiteLayer.FineDetailPoints.Max(p => p.X),
-                    whiteLayer.FineDetailPoints.Min(p => p.Y),
-                    whiteLayer.FineDetailPoints.Max(p => p.Y)
-                );
-            }
-
-            return skippedRegions;
         }
 
         private static readonly int[] LargeBrushSizes = [27, 19, 13, 7, 3];
 
-        // eviction thresholds are how many of that size there must be for it to commit to doing larger brushes over smaller ones.
-        // bigger ones fill more area so they get more slack.
-        // TODO: MORE WORK TWEAKING THESE!!!
-        private static readonly int[] LargeBrushEvictionThreshold = [1, 1, 2, 6, 12];
+        // Various thresholds for eviction, based on image size.
+
+        private static readonly int[] LargeBrushEvictionThreshold_200 = [1, 1, 3, 12, 24];
+        private static readonly int[] LargeBrushEvictionThreshold_128 = [1, 1, 2, 7, 12];
+        private static readonly int[] LargeBrushEvictionThreshold_64OrLess = [1, 1, 1, 3, 6];
+
+        /// <summary>Indicates whether a set of brushes should be evicted based on image size, brush size, and count of them.</summary>
+        /// <param name="width">Image width in pixels</param>
+        /// <param name="height">Image height in pixels</param>
+        /// <param name="size">Size of brush in pixels, squared. Mapped through <see cref="LargeBrushSizes"/></param>
+        /// <param name="count">Number of instances of that brush size</param>
+        /// <returns></returns>
+        private static bool ShouldEvictBrushes(int width, int height, int size, int count)
+        {
+            int pixelCount = width * height;
+            int index = Array.IndexOf(LargeBrushSizes, size);
+
+            if (pixelCount <= 64 * 64)
+                return count < LargeBrushEvictionThreshold_64OrLess[index];
+            else if (pixelCount <= 128 * 128)
+                return count < LargeBrushEvictionThreshold_128[index];
+            else
+                return count < LargeBrushEvictionThreshold_200[index];
+        }
 
 
         private static (int MinZoneSize, int MinBucketClickSafety) GetDynamicBucketHeuristics(
@@ -487,8 +390,7 @@ namespace TomodachiDrawer.Core
             ColourLayer l,
             int width,
             int height,
-            int minZoneSize = 36,
-            int minBucketClickSafety = 2
+            int minZoneSize = 36
         )
         {
             var workingSet = new bool[width, height];
@@ -577,30 +479,10 @@ namespace TomodachiDrawer.Core
                             }
                         }
 
-                        // Reject uselessly small ones, and only bucket-fill zones that have a
-                        // click point safely inside the outline. Clicking the first interior pixel
-                        // can be directly next to the boundary; if the cursor is delayed by one
-                        // step, the bucket can hit outside the intended area and flood the image.
+                        // Reject uselessly small ones.
                         if (currentZone.Count >= minZoneSize)
                         {
-                            var safestClick = FindSafestBucketClick(
-                                currentZone,
-                                interiorPixels,
-                                width,
-                                height,
-                                dx,
-                                dy,
-                                out int clickSafety
-                            );
-
-                            if (clickSafety >= minBucketClickSafety)
-                            {
-                                bucketClicks.Add(safestClick);
-                            }
-                            else
-                            {
-                                outlinePixels.AddRange(currentZone);
-                            }
+                            bucketClicks.Add(startNode);
                         }
                         else
                         {
@@ -617,85 +499,6 @@ namespace TomodachiDrawer.Core
             l.BucketClicks = new HashSet<CanvasPoint>(bucketClicks);
 
             return l.BucketClicks.Count;
-        }
-
-        private static CanvasPoint FindSafestBucketClick(
-            List<CanvasPoint> zone,
-            bool[,] interiorPixels,
-            int width,
-            int height,
-            int[] dx,
-            int[] dy,
-            out int safety
-        )
-        {
-            var distances = new int[width, height];
-            var q = new Queue<CanvasPoint>();
-
-            foreach (var point in zone)
-            {
-                bool isInteriorEdge = false;
-                for (int i = 0; i < 4; i++)
-                {
-                    int tx = point.X + dx[i];
-                    int ty = point.Y + dy[i];
-                    if (
-                        tx < 0
-                        || tx >= width
-                        || ty < 0
-                        || ty >= height
-                        || !interiorPixels[tx, ty]
-                    )
-                    {
-                        isInteriorEdge = true;
-                        break;
-                    }
-                }
-
-                if (isInteriorEdge)
-                {
-                    distances[point.X, point.Y] = 1;
-                    q.Enqueue(point);
-                }
-            }
-
-            while (q.Count > 0)
-            {
-                var current = q.Dequeue();
-                int nextDistance = distances[current.X, current.Y] + 1;
-
-                for (int i = 0; i < 4; i++)
-                {
-                    int tx = current.X + dx[i];
-                    int ty = current.Y + dy[i];
-                    if (
-                        tx >= 0
-                        && tx < width
-                        && ty >= 0
-                        && ty < height
-                        && interiorPixels[tx, ty]
-                        && distances[tx, ty] == 0
-                    )
-                    {
-                        distances[tx, ty] = nextDistance;
-                        q.Enqueue(new CanvasPoint(tx, ty));
-                    }
-                }
-            }
-
-            CanvasPoint safestClick = zone[0];
-            safety = distances[safestClick.X, safestClick.Y];
-            foreach (var point in zone)
-            {
-                int distance = distances[point.X, point.Y];
-                if (distance > safety)
-                {
-                    safety = distance;
-                    safestClick = point;
-                }
-            }
-
-            return safestClick;
         }
 
         /// <summary>Takes in a ColourLayer and detects large areas that can be better drawn with stamps.</summary>
@@ -744,10 +547,7 @@ namespace TomodachiDrawer.Core
                     continue;
 
                 // Evict lone stamps or small amounts of them
-                // The overhead of going to them is generally not worth it.
-
-                int indexOfBrushSize = Array.IndexOf(LargeBrushSizes, brushSize);
-                if (largeBrushPoints.Count < LargeBrushEvictionThreshold[indexOfBrushSize])
+                if (ShouldEvictBrushes(width, height, brushSize, largeBrushPoints.Count))
                 {
                     _log(
                         $"\tEVICTED {largeBrushPoints.Count} areas for size {brushSize}^2 because too few."
@@ -980,15 +780,19 @@ namespace TomodachiDrawer.Core
             // Find start point, this logic will need adjusted in time
             // when we eventually reorder layers to be the most optimal.
 
-            var optimizedRoute = PerformTSP(l.FineDetailPoints.ToList(), timeLimitSeconds);
+            var pointsList = l.FineDetailPoints.ToList();
+
+            var optimizedRoute = PerformTSP(pointsList, timeLimitSeconds);
 
             if (optimizedRoute == null)
-                return;
+            {
+                _log($"\tTSP timed out. Performing naive routing for TSP instead...");
+                optimizedRoute = FineDetailRoughTSP(pointsList);
+            }
 
             // Navigate through the optimised route.
-            // A is held across orthogonally-adjacent pixels only. Diagonal held strokes can make
-            // the pixel-perfect brush drift or clip past the canvas edge, so diagonal neighbours
-            // are treated as separate taps.
+            // A is held across consecutive points that are exactly 1 step apart (Chebyshev == 1).
+            // For isolated points (no adjacent neighbour) a plain Tap is used.
             bool isAHeld = false;
             for (int idx = 0; idx < optimizedRoute.Count; idx++)
             {
@@ -997,9 +801,10 @@ namespace TomodachiDrawer.Core
 
                 bool nextIsAdjacent =
                     idx + 1 < optimizedRoute.Count
-                    && Math.Abs(optimizedRoute[idx + 1].X - point.X)
-                        + Math.Abs(optimizedRoute[idx + 1].Y - point.Y)
-                        == 1;
+                    && Math.Max(
+                        Math.Abs(optimizedRoute[idx + 1].X - point.X),
+                        Math.Abs(optimizedRoute[idx + 1].Y - point.Y)
+                    ) == 1;
 
                 if (isAHeld)
                 {
@@ -1027,41 +832,109 @@ namespace TomodachiDrawer.Core
             }
         }
 
-        private List<CanvasPoint>? PerformTSP(List<CanvasPoint> inputPoints, float timeLimitSeconds)
+        /// <summary>Very rough TSP, one pass just repeatedly finds the closest point until its done. Fallback for FineDetailTsp if it times out</summary>
+        /// <param name="output"></param>
+        /// <param name="l">Colour layer to route</param>
+        /// <returns>Ordered list of points as the route</returns>
+        private List<CanvasPoint> FineDetailRoughTSP(List<CanvasPoint> inputPoints)
         {
-            if (inputPoints.Count <= 1)
-                return [.. inputPoints];
-
+#if DEBUG
+            var sw = Stopwatch.StartNew();
+#endif
             var points = inputPoints.ToArray();
 
-            const int originNode = 0;
-            int dummyEndNode = points.Length + 1;
-            int nodeCount = points.Length + 2;
+            var ordered = new List<CanvasPoint>(points.Length);
 
-            // Model drawing as an open path: start at the current cursor, visit every point once,
-            // then finish anywhere. The dummy end node has zero inbound cost, which avoids the
-            // old closed-loop TSP bias that optimized an unnecessary return to the starting point.
-            var manager = new RoutingIndexManager(nodeCount, 1, [originNode], [dummyEndNode]);
+            if (inputPoints.Count == 0)
+            {
+                return ordered;
+            }
+            else if (inputPoints.Count == 1)
+            {
+                ordered.Add(points[0]);
+                return ordered;
+            }
+
+            var closestPointIndex = 0;
+            var closestPointDist = MeasureDistanceToFromCurrent(points[0].X, points[0].Y);
+            for (int i = 0; i < points.Length; i++)
+            {
+                var p = points[i];
+                var distance = MeasureDistanceToFromCurrent(p.X, p.Y);
+                if (distance < closestPointDist)
+                {
+                    closestPointIndex = i;
+                    closestPointDist = distance;
+                }
+            }
+
+            // We are just going to go to the nearest point repeatedly.
+            var currentIndex = closestPointIndex;
+            ordered.Add(points[currentIndex]);
+            var visited = new bool[points.Length];
+            visited[currentIndex] = true;
+
+            for (int i = 0; i < points.Length - 1; i++)
+            {
+                var cur = points[currentIndex];
+                int nearestIndex = -1;
+                int nearestDist = int.MaxValue;
+
+                for (int j = 0; j < points.Length; j++)
+                {
+                    if (visited[j])
+                        continue;
+                    int dist = Math.Max(Math.Abs(points[j].X - cur.X), Math.Abs(points[j].Y - cur.Y));
+                    if (dist < nearestDist)
+                    {
+                        nearestDist = dist;
+                        nearestIndex = j;
+                    }
+                }
+
+                visited[nearestIndex] = true;
+                ordered.Add(points[nearestIndex]);
+                currentIndex = nearestIndex;
+            }
+#if DEBUG
+            sw.Stop();
+            _log($"\tNaive TSP took {sw.ElapsedMilliseconds}ms");
+#endif
+
+            return ordered;
+        }
+
+        private List<CanvasPoint>? PerformTSP(List<CanvasPoint> inputPoints, float timeLimitSeconds)
+        {
+            var points = inputPoints.ToArray();
+            var closestPointIndex = 0;
+            var closestPointDist = MeasureDistanceToFromCurrent(points[0].X, points[0].Y);
+            for (int i = 0; i < points.Length; i++)
+            {
+                var p = points[i];
+                var distance = MeasureDistanceToFromCurrent(p.X, p.Y);
+                if (distance < closestPointDist)
+                {
+                    closestPointIndex = i;
+                    closestPointDist = distance;
+                }
+            }
+
+            var manager = new RoutingIndexManager(points.Length, 1, closestPointIndex);
             var routing = new RoutingModel(manager);
 
             int transitCallbackIndex = routing.RegisterTransitCallback(
                 (fromIndex, toIndex) =>
                 {
-                    int fromNode = manager.IndexToNode(fromIndex);
-                    int toNode = manager.IndexToNode(toIndex);
-
-                    if (toNode == dummyEndNode || fromNode == dummyEndNode || toNode == originNode)
-                        return 0;
-
-                    if (fromNode == originNode)
-                    {
-                        var toPoint = points[toNode - 1];
-                        return MeasureDistanceToFromCurrent(toPoint.X, toPoint.Y);
-                    }
-
-                    var fromPoint = points[fromNode - 1];
-                    var nextPoint = points[toNode - 1];
-                    return MeasureDistance(fromPoint, nextPoint);
+                    var fromNode = manager.IndexToNode(fromIndex);
+                    var toNode = manager.IndexToNode(toIndex);
+                    // A note: during testing I made a change trying to incentivize adjacent things
+                    // since it can just hold A during... but the lowest value this can return is 1
+                    // so there was no gain, it was already trying to do that lol.
+                    return Math.Max(
+                        Math.Abs(points[fromNode].X - points[toNode].X),
+                        Math.Abs(points[fromNode].Y - points[toNode].Y)
+                    );
                 }
             );
 
@@ -1097,30 +970,18 @@ namespace TomodachiDrawer.Core
             long index = routing.Start(0);
             while (routing.IsEnd(index) == false)
             {
-                int node = manager.IndexToNode(index);
-                if (node != originNode)
-                    optimizedRoute.Add(points[node - 1]);
-
+                optimizedRoute.Add(points[manager.IndexToNode(index)]);
                 index = solution.Value(routing.NextVar(index));
             }
 
             return optimizedRoute;
         }
 
-        private static int MeasureDistance(CanvasPoint from, CanvasPoint to) =>
-            Math.Max(Math.Abs(from.X - to.X), Math.Abs(from.Y - to.Y));
-
         private void NavigateTo(ISwitchOutput output, CanvasPoint p) =>
             NavigateTo(output, p.X, p.Y);
 
         private void NavigateTo(ISwitchOutput output, int targetX, int targetY)
         {
-            if (targetX < 0 || targetX >= CanvasWidth || targetY < 0 || targetY >= CanvasHeight)
-                throw new ArgumentOutOfRangeException(
-                    nameof(targetX),
-                    $"Target point ({targetX}, {targetY}) is outside the {CanvasWidth}x{CanvasHeight} canvas."
-                );
-
             // Diaganols.
             while (_cursorX != targetX && _cursorY != targetY)
             {
@@ -1181,21 +1042,6 @@ namespace TomodachiDrawer.Core
         {
             return Math.Max(Math.Abs(_cursorX - targetX), Math.Abs(_cursorY - targetY));
         }
-
-        // TODO: Verify this before enabling. The expected starting point is the drawing canvas
-        // with the cursor already focused on the Basic/Pro mode toggle. If the focus is anywhere
-        // else, these inputs may select the wrong control and desync the draw.
-        // private void SwitchBasicModeToProMode()
-        // {
-        //     _realOutput.Tap(Button.X, 100, 50); // Open the drawing UI/options area.
-        //     _realOutput.Delay(500);
-        //     _realOutput.Tap(DPad.UP, 50, 50);
-        //     _realOutput.Tap(DPad.LEFT, 50, 50);
-        //     _realOutput.Tap(Button.A, 100, 50); // Toggle Basic -> Pro.
-        //     _realOutput.Delay(750);
-        //     _realOutput.Tap(Button.B, 100, 50); // Return to the canvas before drawing.
-        //     _realOutput.Delay(500);
-        // }
 
         public void ConnectAndConfirmController()
         {

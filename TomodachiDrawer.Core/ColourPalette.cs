@@ -330,17 +330,9 @@ namespace TomodachiDrawer.Core
             _realOutput.Tap(Button.Y, speed, speed);
             _realOutput.Delay(400);
 
-            // Now in the colour menu. Track the active tab so grid moves are applied on the palette tab.
+            // Now in the colour menu. What tab? Shrug!
             if (!target.IsArbitrary && target.GridX != null && target.GridY != null)
             {
-                if (_lastWasArbitrary)
-                {
-                    // Return from the full-colour tab before using stored grid coordinates.
-                    _realOutput.Tap(Button.L, speed, speed);
-                    _realOutput.Delay(400);
-                    _lastWasArbitrary = false;
-                }
-
                 // Move to right spot, from the
                 int deltaX = (int)target.GridX - _lastGridX;
                 int deltaY = (int)target.GridY - _lastGridY;
@@ -364,10 +356,7 @@ namespace TomodachiDrawer.Core
             {
                 if (!_lastWasArbitrary)
                 {
-                    // Move to the full-colour tab once and remember it for future arbitrary colours.
-                    _realOutput.Tap(Button.R, speed, speed);
-                    _realOutput.Delay(400);
-                    _lastWasArbitrary = true;
+                    _realOutput.Tap(Button.R);
                 }
 
                 // Figure out the steps first off
