@@ -53,13 +53,13 @@ namespace TomodachiDrawer.Core
 
             int pixels = width * height;
             if (pixels <= squared64)
-                return 0.5f;
+                return 0.05f;
             else if (pixels <= squared128)
-                return 1.5f;
+                return 0.2f;
             else if (pixels <= squared192)
-                return 2.75f;
+                return 0.35f;
             else if (pixels <= squared256)
-                return 4.0f;
+                return 0.5f;
             else
             {
                 return 5.0f; // should ever reach here...
@@ -305,9 +305,12 @@ namespace TomodachiDrawer.Core
 
                     _toolbar.SelectBucket();
                     // tsp solve the points
-                    var bucketClickRouteTimeout = 0.25f;
-                    if (l.BucketClicks.Count > 50)
-                        bucketClickRouteTimeout = 0.5f;
+                    // Spend slightly more solve time as click count grows. Better ordering reduces long cursor travel.
+                    var bucketClickRouteTimeout = Math.Clamp(
+                        0.1f + (l.BucketClicks.Count * 0.01f),
+                        0.1f,
+                        0.6f
+                    );
                     var optimizedBucketClickRoute = PerformTSP(
                         l.BucketClicks.ToList(),
                         bucketClickRouteTimeout
@@ -356,8 +359,7 @@ namespace TomodachiDrawer.Core
             ColourLayer l,
             int width,
             int height,
-            int minZoneSize = 36,
-            int minBucketClickSafety = 2
+            int minZoneSize = 36
         )
         {
             var workingSet = new bool[width, height];

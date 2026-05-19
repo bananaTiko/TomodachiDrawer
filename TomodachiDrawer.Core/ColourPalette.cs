@@ -292,6 +292,21 @@ namespace TomodachiDrawer.Core
 
         private PaletteColour? _lastColour = null;
 
+        public void SelectBlack(double speed)
+        {
+            var black = new PaletteColour(
+                "Black",
+                0,
+                0,
+                0,
+                null,
+                null,
+                new SKColor(0, 0, 0, 255),
+                IsArbitrary: true
+            );
+            SelectColour(black, speed);
+        }
+
         public void SelectColour(PaletteColour target, double speed)
         {
             if (_lastColour != null && _lastColour == target)
