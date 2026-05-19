@@ -1,4 +1,5 @@
 ﻿using SkiaSharp;
+
 using TomodachiDrawer.Core.ImageProcessing;
 using TomodachiDrawer.Core.ImageProcessing.Denoising;
 using TomodachiDrawer.Core.ImageProcessing.Quantizers;
@@ -15,11 +16,6 @@ namespace TomodachiDrawer.Core
         private const int GridHeight = 7;
         private const int HotbarSlots = 9;
         private const int HotbarHeaderRows = 2; // Used for homing.
-
-        // Full colour range.
-        private const int FCR_HUE_SLIDER_STEP_COUNT = 201;
-        private const int FCR_SATURATION_STEP_COUNT = 213;
-        private const int FCR_VALUE_STEP_COUNT = 112;
 
         // In game stuff, relevant to current draw session.
         // Used to track where our last colour was, so we can minimize inputs to change palette.
@@ -296,12 +292,6 @@ namespace TomodachiDrawer.Core
 
         private PaletteColour? _lastColour = null;
 
-        public void SelectBlack(double speed)
-        {
-            var black = Colours.First(c => c.Name == "Black");
-            SelectColour(black, speed);
-        }
-
         public void SelectColour(PaletteColour target, double speed)
         {
             if (_lastColour != null && _lastColour == target)
@@ -325,17 +315,9 @@ namespace TomodachiDrawer.Core
             _realOutput.Tap(Button.Y, speed, speed);
             _realOutput.Delay(400);
 
-            // Now in the colour menu. Track the active tab so grid moves are applied on the palette tab.
+            // Now in the colour menu. What tab? Shrug!
             if (!target.IsArbitrary && target.GridX != null && target.GridY != null)
             {
-                if (_lastWasArbitrary)
-                {
-                    // Return from the full-colour tab before using stored grid coordinates.
-                    _realOutput.Tap(Button.L, speed, speed);
-                    _realOutput.Delay(400);
-                    _lastWasArbitrary = false;
-                }
-
                 // Move to right spot, from the
                 int deltaX = (int)target.GridX - _lastGridX;
                 int deltaY = (int)target.GridY - _lastGridY;
@@ -359,31 +341,17 @@ namespace TomodachiDrawer.Core
             {
                 if (!_lastWasArbitrary)
                 {
-                    // Move to the full-colour tab once and remember it for future arbitrary colours.
-                    _realOutput.Tap(Button.R, speed, speed);
-                    _realOutput.Delay(400);
-                    _lastWasArbitrary = true;
+                    _realOutput.Tap(Button.R);
                 }
 
-                // TLDR: The RGB needs to be Linearized from sRGB then turned to HSV.
-                // This seemingly is a 1:1 match.
-                float linR = ToLinear(target.skColor.Red);
-                float linG = ToLinear(target.skColor.Green);
-                float linB = ToLinear(target.skColor.Blue);
-
-                LinearRgbToHsv(linR, linG, linB, out float h, out float s, out float v);
-
                 // Figure out the steps first off
-                int hueSteps = (int)
-                    Math.Round((1.0f - h / 360.0f) * (FCR_HUE_SLIDER_STEP_COUNT - 1));
-                int satSteps = (int)Math.Round((1.0f - s) * (FCR_SATURATION_STEP_COUNT - 1));
-                int valSteps = (int)Math.Round((1.0f - v) * (FCR_VALUE_STEP_COUNT - 1));
+                var steps = ColourPickerRouter.FromColour(target.skColor);
 
                 // Determine which way we home for shorter travel.
                 // If we are past the halfway point, use the opposite side.
-                bool hueHomeLeft = hueSteps <= (FCR_HUE_SLIDER_STEP_COUNT - 1) / 2;
-                bool satHomeRight = satSteps <= (FCR_SATURATION_STEP_COUNT - 1) / 2;
-                bool valHomeTop = valSteps <= (FCR_VALUE_STEP_COUNT - 1) / 2;
+                bool hueHomeLeft = steps.HueSteps <= (ColourPickerRouter.FCR_HUE_SLIDER_STEP_COUNT - 1) / 2;
+                bool satHomeRight = steps.SatSteps <= (ColourPickerRouter.FCR_SATURATION_STEP_COUNT - 1) / 2;
+                bool valHomeTop = steps.ValSteps <= (ColourPickerRouter.FCR_VALUE_STEP_COUNT - 1) / 2;
 
                 // Use stick for quicker homing
                 _realOutput.SetStick(Stick.LX, satHomeRight ? (byte)255 : (byte)0);
@@ -402,15 +370,19 @@ namespace TomodachiDrawer.Core
                 // _output.Delay(25);
                 // to avoid the inherent delays of .Tap, this would negate compression savings of .Tap
                 // but for colour selection it would be fairly insignificant.
-                int hueInputs = hueHomeLeft ? hueSteps : (FCR_HUE_SLIDER_STEP_COUNT - 1) - hueSteps;
+                int hueInputs = hueHomeLeft
+                    ? steps.HueSteps
+                    : (ColourPickerRouter.FCR_HUE_SLIDER_STEP_COUNT - 1) - steps.HueSteps;
                 Button hueTapDirection = hueHomeLeft ? Button.ZR : Button.ZL;
 
                 int satInputs = satHomeRight
-                    ? satSteps
-                    : (FCR_SATURATION_STEP_COUNT - 1) - satSteps;
+                    ? steps.SatSteps
+                    : (ColourPickerRouter.FCR_SATURATION_STEP_COUNT - 1) - steps.SatSteps;
                 DPad satDirection = satHomeRight ? DPad.LEFT : DPad.RIGHT;
 
-                int valInputs = valHomeTop ? valSteps : (FCR_VALUE_STEP_COUNT - 1) - valSteps;
+                int valInputs = valHomeTop
+                    ? steps.ValSteps
+                    : (ColourPickerRouter.FCR_VALUE_STEP_COUNT - 1) - steps.ValSteps;
                 DPad valDirection = valHomeTop ? DPad.DOWN : DPad.UP;
 
                 for (int i = 0; i < hueInputs; i++)
@@ -427,43 +399,6 @@ namespace TomodachiDrawer.Core
             }
 
             _lastColour = target;
-        }
-
-        private static float ToLinear(byte srgb8)
-        {
-            float c = srgb8 / 255.0f;
-            if (c <= 0.04045f)
-                return c / 12.92f;
-            return MathF.Pow((c + 0.055f) / 1.055f, 2.4f);
-        }
-
-        private static void LinearRgbToHsv(
-            float r,
-            float g,
-            float b,
-            out float h,
-            out float s,
-            out float v
-        )
-        {
-            float min = Math.Min(r, Math.Min(g, b));
-            float max = Math.Max(r, Math.Max(g, b));
-            float delta = max - min;
-
-            v = max;
-            s = max == 0 ? 0 : delta / max;
-
-            if (delta == 0)
-                h = 0;
-            else if (max == r)
-                h = 60 * (((g - b) / delta) % 6);
-            else if (max == g)
-                h = 60 * (((b - r) / delta) + 2);
-            else
-                h = 60 * (((r - g) / delta) + 4);
-
-            if (h < 0)
-                h += 360;
         }
     }
 }

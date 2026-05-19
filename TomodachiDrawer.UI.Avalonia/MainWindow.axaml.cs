@@ -1,5 +1,7 @@
 using System.Reflection;
 using System.Text.Json;
+using System.Text.Json.Serialization;
+
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -10,19 +12,22 @@ using Avalonia.Media.Imaging;
 using Avalonia.Platform.Storage;
 using Avalonia.Styling;
 using Avalonia.Threading;
+
 using SkiaSharp;
+
 using TomodachiDrawer.Core;
 using TomodachiDrawer.Core.ImageProcessing.Denoising;
 using TomodachiDrawer.Core.ImageProcessing.Quantizers;
 using TomodachiDrawer.Core.Models;
 using TomodachiDrawer.Core.OutputSinks;
+
 using Button = Avalonia.Controls.Button; // conflict with the Button enum in SinkEnums
 
 namespace TomodachiDrawer.UI.Avalonia;
 
 public partial class MainWindow : Window
 {
-    private const string SettingsFilePath = "settings.json";
+    private const string firmwareFileName = "TomodachiDrawer.Firmware.uf2";
 
     private string _currentImagePath = string.Empty;
     private readonly CancellationTokenSource _cts = new();
@@ -51,6 +56,8 @@ public partial class MainWindow : Window
 
         GetSettings();
 
+
+
         DragDrop.SetAllowDrop(this, true);
         AddHandler(DragDrop.DropEvent, OnDrop);
         AddHandler(DragDrop.DragOverEvent, OnDragOver);
@@ -64,6 +71,33 @@ public partial class MainWindow : Window
         StartRP2040Polling();
         if (CheckForUpdatesCheckBox.IsChecked)
             _ = PerformAsyncUpdateCheck();
+
+
+        if (_currentSettings.FirstStartId != CURRENT_WELCOME_ID)
+        {
+            Opened += MainWindow_Opened;
+        }
+    }
+
+    private async void MainWindow_Opened(object? sender, EventArgs e)
+    {
+        ShowWelcomeMessage();
+        _currentSettings.FirstStartId = CURRENT_WELCOME_ID;
+        SaveSettings();
+    }
+
+    // Welcome message stuff. For important changes, the ID is incremented by one by hand whenever something notable changes.
+    // This is only really needed for Mac since its settings are saved in a way that persists more readily.
+    private const int CURRENT_WELCOME_ID = 1;
+    private async void ShowWelcomeMessage()
+    {
+        await ShowMessageAsync(
+            "Welcome to TomodachiDrawer",
+            "As of 0.4.7, the Base Firmware has been tweaked to fix a slowdown introduced in 0.3.3. " +
+            "You are encouraged to hit the Flash Base Firmware button again if you flashed prior to this, its harmless if you aren't sure. " +
+            "\nIf this is your first time using TomodachiDrawer, you do not need to worry about this. " +
+            "\n\nHappy (computer assisted) drawing!"
+        );
     }
 
     private static string GetVersionString(bool includeCommit)
@@ -612,12 +646,32 @@ public partial class MainWindow : Window
         SetEstimate(totalTime);
     }
 
+    private static string GetBaseFirmwareFilePath()
+    {
+        // Check if we're running on macOS and the app is running from app bundle, not CLI.
+        var baseDirectory = AppContext.BaseDirectory;
+        if (OperatingSystem.IsMacOS() && baseDirectory.Contains(".app/Contents/MacOS"))
+        {
+            // In macOS, when you launch `.app` from Finder, the current working directory is root directory `/` (Gemini said),
+            // and the firmware file isn't located there (`/TomodachiDrawer.Firmware.uf2`).
+            // So we need to find the firmware file in the app bundle.
+            // `AppContext.BaseDirectory` resolves to `/path/to/TomodachiDrawer.app/Contents/MacOS/`, so we can get the path to the firmware file from there.
+            // The firmware file should locate at `/path/to/TomodachiDrawer.app/Contents/MacOS/TomodachiDrawer.Firmware.uf2`
+            return Path.Combine(baseDirectory, firmwareFileName);
+        }
+        else
+        {
+            // Simply use the file in current working directory
+            return firmwareFileName;
+        }
+    }
+
     private void FlashFirmwareButton_Click(object? sender, RoutedEventArgs e)
     {
-        const string firmwareFile = "TomodachiDrawer.Firmware.uf2";
+        var firmwareFilePath = GetBaseFirmwareFilePath();
         var drivePath = UF2Flasher.FindRP2040Drive();
 
-        if (!File.Exists(firmwareFile))
+        if (!File.Exists(firmwareFilePath))
         {
             _ = ShowMessageAsync(
                 "Error flashing base firmware",
@@ -633,7 +687,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        File.Copy(firmwareFile, Path.Combine(drivePath, firmwareFile), overwrite: true);
+        File.Copy(firmwareFilePath, Path.Combine(drivePath, firmwareFileName), overwrite: true);
 
         var timeout = System.DateTime.Now.AddSeconds(10);
         while (UF2Flasher.FindRP2040Drive() != null)
@@ -712,21 +766,7 @@ public partial class MainWindow : Window
     private void ColourLimitUpDown_ValueChanged(
         object? sender,
         NumericUpDownValueChangedEventArgs e
-    )
-    {
-        _currentSettings.ColourLimit = (int)(ColourLimitUpDown.Value ?? 16m);
-        SaveSettings();
-        UpdatePreview();
-    }
-
-    private void TSPTimeLimitUpDown_ValueChanged(
-        object? sender,
-        NumericUpDownValueChangedEventArgs e
-    )
-    {
-        _currentSettings.TSPTimeLimit = TSPTimeLimitUpDown.Value ?? 0.5m;
-        SaveSettings();
-    }
+    ) => UpdatePreview();
 
     private void AppThemeComboBox_SelectionChanged(object? sender, SelectionChangedEventArgs e)
     {
@@ -768,45 +808,53 @@ public partial class MainWindow : Window
         );
     }
 
-    private JsonSerializerOptions _jsonOptions = new JsonSerializerOptions()
+    private static string GetSettingsFilePath()
     {
-#if DEBUG
-        WriteIndented = true
-#else
-        WriteIndented = false
-#endif
-    };
+        const string settingsFileName = "settings.json";
+
+        // Check if we're running on macOS and the app is running from the app bundle, not CLI.
+        if (OperatingSystem.IsMacOS() && AppContext.BaseDirectory.Contains(".app/Contents/MacOS"))
+        {
+            // In macOS, when you launch `.app` from Finder, the current working directory is root directory `/` (Gemini said),
+            // which is read-only and not a good place to store our settings file.
+            // We need to place the settings file somewhere else.
+            // `~/Library/Application Support` is a common place to store app data on macOS (like `%APPDATA%` on Windows).
+            // So first, ensure `~/Library/Application Support/TomodachiDrawer` exists
+            var appDataFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "TomodachiDrawer");
+            if (!Directory.Exists(appDataFolder))
+            {
+                Directory.CreateDirectory(appDataFolder);
+            }
+            // Returns `~/Library/Application Support/TomodachiDrawer/settings.json`
+            return Path.Combine(appDataFolder, settingsFileName);
+        }
+        else
+        {
+            // Simply place it in the current working directory
+            return settingsFileName;
+        }
+    }
 
     private void SaveSettings()
     {
-        var json = JsonSerializer.Serialize(_currentSettings, _jsonOptions);
-        File.WriteAllText(SettingsFilePath, json);
+        var json = JsonSerializer.Serialize(_currentSettings, AppSettingsContext.Default.AppSettings);
+        File.WriteAllText(GetSettingsFilePath(), json);
     }
 
     private void GetSettings()
     {
-        if (File.Exists(SettingsFilePath))
+        var settingsFilePath = GetSettingsFilePath();
+
+        if (File.Exists(settingsFilePath))
         {
             try
             {
-                var json = File.ReadAllText(SettingsFilePath);
-                var settings = JsonSerializer.Deserialize<AppSettings>(json);
+                var json = File.ReadAllText(settingsFilePath);
+                var settings = JsonSerializer.Deserialize(json, AppSettingsContext.Default.AppSettings);
 
                 if (settings != null)
                 {
                     _currentSettings = settings;
-
-                    SwitchVersionComboBox.SelectedIndex =
-                        (int)_currentSettings.SelectedSwitchVersion - 1;
-                    SetTheme(_currentSettings.SelectedThemeIndex);
-                    AppThemeComboBox.SelectedIndex = _currentSettings.SelectedThemeIndex;
-
-                    EnableExperimentalCheckBox.IsChecked =
-                        _currentSettings.EnableExperimentalFeatures;
-                    CheckForUpdatesCheckBox.IsChecked = _currentSettings.CheckForUpdatesOnStart;
-                    ColourLimitUpDown.Value = _currentSettings.ColourLimit;
-                    TSPTimeLimitUpDown.Value = _currentSettings.TSPTimeLimit;
-                    return;
                 }
             }
             catch (Exception)
@@ -816,24 +864,16 @@ public partial class MainWindow : Window
         }
 
         // if no images or we fail, fall to defaults in the appsettings class.
-        _currentSettings = new AppSettings();
-    }
+        _currentSettings ??= new AppSettings();
 
-    // TODO: replace _selectedSwitchVersion and _selectedThemeIndex with just a instance of
-    // appsettings with whatever was last loaded.
-    private class AppSettings
-    {
-        public SwitchVersion SelectedSwitchVersion { get; set; } = SwitchVersion.None;
+        SwitchVersionComboBox.SelectedIndex =
+            (int)_currentSettings.SelectedSwitchVersion - 1;
+        SetTheme(_currentSettings.SelectedThemeIndex);
+        AppThemeComboBox.SelectedIndex = _currentSettings.SelectedThemeIndex;
 
-        public int SelectedThemeIndex { get; set; } = 0;
-
-        public bool EnableExperimentalFeatures { get; set; } = false;
-
-        public bool CheckForUpdatesOnStart { get; set; } = true;
-
-        public int ColourLimit { get; set; } = 16;
-
-        public decimal TSPTimeLimit { get; set; } = 0.5m;
+        EnableExperimentalCheckBox.IsChecked =
+            _currentSettings.EnableExperimentalFeatures;
+        CheckForUpdatesCheckBox.IsChecked = _currentSettings.CheckForUpdatesOnStart;
     }
 
     private void SwitchVersionComboBox_SelectionChanged(object? sender, SelectionChangedEventArgs e)
@@ -901,6 +941,9 @@ public partial class MainWindow : Window
         AppendLog($"Saved current preview to {outputPath}");
     }
 
+    private void MenuToolsOpenColourToHSVStepsTool_Click(object? sender, RoutedEventArgs e) =>
+        new ColourToHSVStepsTool().Show(this);
+
     private void MenuHelpOpenGitHub_Click(object? sender, RoutedEventArgs e) =>
         Launcher.LaunchUriAsync(new Uri("https://github.com/Lucas7yoshi/TomodachiDrawer"));
 
@@ -921,4 +964,8 @@ public partial class MainWindow : Window
     {
         Close();
     }
+
+    private void MenuHelpOpenWelcome_Click(object? sender, RoutedEventArgs e) => ShowWelcomeMessage();
+
+    private void MenuHelpCheckForUpdate_Click(object? sender, RoutedEventArgs e) => _ = PerformAsyncUpdateCheck();
 }
