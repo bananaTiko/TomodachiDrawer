@@ -34,7 +34,7 @@ jobs:
     - name: Test
       run: dotnet test --configuration ${{ matrix.configuration }} --no-build --verbosity normal /p:EnableWindowsTargeting=true
   build-rp-firmware:
-    name: ${{ matrix.platform }} Firmware
+    name: Compile ${{ matrix.platform }} Firmware
     runs-on: ubuntu-latest
     strategy:
       matrix:
