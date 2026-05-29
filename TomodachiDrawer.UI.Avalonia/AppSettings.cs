@@ -13,6 +13,16 @@ internal class AppSettings
 
     public bool CheckForUpdatesOnStart { get; set; } = true;
 
+    public string SelectedColourMatcher { get; set; } = "Arbitrary";
+
+    public int ColourLimit { get; set; } = 16;
+
+    public string SelectedDenoiser { get; set; } = "None";
+
+    public bool? AutoHomeCanvasToTopLeft { get; set; } = null;
+
+    public float? TspSolverTimeLimit { get; set; } = null;
+
     public int FirstStartId { get; set; } = 0;
 
     /// <summary>This is null by default to indicate they havent been asked yet.</summary>
