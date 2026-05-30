@@ -671,7 +671,7 @@ public partial class MainWindow : Window
         ColourLimitUpDown.IsEnabled =
             ColourMatcherComboBox?.SelectedValue?.ToString() == "Arbitrary";
 
-        if (!_loadingSettings && ColourMatcherComboBox.SelectedItem?.ToString() is { } selectedColourMatcher)
+        if (!_loadingSettings && ColourMatcherComboBox?.SelectedItem?.ToString() is { } selectedColourMatcher)
         {
             _currentSettings.SelectedColourMatcher = selectedColourMatcher;
             SaveSettings();
@@ -683,7 +683,7 @@ public partial class MainWindow : Window
         if (_currentImage != null)
             await UpdatePreviewAsync();
 
-        if (!_loadingSettings && DenoisingComboBox.SelectedItem?.ToString() is { } selectedDenoiser)
+        if (!_loadingSettings && DenoisingComboBox?.SelectedItem?.ToString() is { } selectedDenoiser)
         {
             _currentSettings.SelectedDenoiser = selectedDenoiser;
             SaveSettings();
