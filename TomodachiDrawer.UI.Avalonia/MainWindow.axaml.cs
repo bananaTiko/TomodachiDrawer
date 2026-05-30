@@ -669,7 +669,6 @@ public partial class MainWindow : Window
         if (_currentImage != null)
             await UpdatePreviewAsync();
         ColourLimitUpDown.IsEnabled =
-        ColourLimitUpDown.IsEnabled =
             ColourMatcherComboBox?.SelectedValue?.ToString() == "Arbitrary";
 
         if (!_loadingSettings && ColourMatcherComboBox.SelectedItem?.ToString() is { } selectedColourMatcher)
