@@ -779,7 +779,8 @@ public partial class MainWindow : Window
             _ = _telemetry.ReportImage(new ImageEventDto(
                 imageWidth, imageHeight, colourCount, quantizerName, colourLimit,
                 _currentSettings.SelectedSwitchVersion.ToString(),
-                enableExperimental, totalTime.TotalSeconds, tspLimit
+                enableExperimental, totalTime.TotalSeconds, tspLimit,
+                GetVersionString(true), chipName
             ));
 
             SetEstimate(totalTime);
@@ -902,6 +903,7 @@ public partial class MainWindow : Window
 
         var chip = sender == RP2350ExportUF2Button ? RPChipType.RP2350 : RPChipType.RP2040;
         var exportUF2Button = chip == RPChipType.RP2350 ? RP2350ExportUF2Button : RP2040ExportUF2Button;
+        var chipName = chip == RPChipType.RP2350 ? "RP2350" : "RP2040";
 
         var file = await StorageProvider.SaveFilePickerAsync(
             new FilePickerSaveOptions
@@ -949,7 +951,8 @@ public partial class MainWindow : Window
             _ = _telemetry.ReportImage(new ImageEventDto(
                 imageWidth, imageHeight, colourCount, quantizerName, colourLimit,
                 _currentSettings.SelectedSwitchVersion.ToString(),
-                enableExperimental, totalTime.TotalSeconds, tspLimit
+                enableExperimental, totalTime.TotalSeconds, tspLimit,
+                GetVersionString(true), chipName
             ));
 
             SetEstimate(totalTime);

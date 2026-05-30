@@ -21,7 +21,9 @@ namespace TomodachiDrawer.UI.Avalonia
         string SwitchVersion,
         bool ExperimentalFeatures,
         double TotalDrawTimeSeconds,
-        double TspTimeLimit
+        double TspTimeLimit,
+        string? AppVersion,
+        string? Controller
     );
 
     [JsonSerializable(typeof(StartupEventDto))]
