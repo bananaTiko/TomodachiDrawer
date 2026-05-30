@@ -149,8 +149,7 @@
 							<NumericUpDown x:Name="TSPTimeLimitUpDown"
 										   Minimum="0.1" Maximum="30"
 										   Increment="0.1" Value="0.5"
-										   FormatString="F1"
-										   Width="110"
+											Width="110" />
 										   ValueChanged="TSPTimeLimitUpDown_ValueChanged" />
 							<TextBlock Text="seconds"
 									   VerticalAlignment="Center" />

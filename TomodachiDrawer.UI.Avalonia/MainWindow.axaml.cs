@@ -516,19 +516,15 @@ public partial class MainWindow : Window
         RP2040ExportUF2Button.IsEnabled = true;
         RP2350ExportUF2Button.IsEnabled = true;
 
-        if (_currentSettings.AutoHomeCanvasToTopLeft == null && img.Width == 256 && img.Height == 256)
+        if (img.Width == 256 && img.Height == 256)
         {
             AppendLog("Image is full canvas size, so enabling auto home by default.\nYou can disable it if it causes you trouble and manually home before connecting.");
-            SetControlValueWithoutSaving(() => EnableHomeCanvas.IsChecked = true);
+            EnableHomeCanvas.IsChecked = true;
         }
 
         await UpdatePreviewAsync();
-        if (_currentSettings.TspSolverTimeLimit == null)
-        {
-            SetControlValueWithoutSaving(() =>
-                TSPTimeLimitUpDown.Value = (decimal)
-                    CanvasDrawer.GetRecommendedTSPSolveTime(img.Width, img.Height));
-        }
+        TSPTimeLimitUpDown.Value = (decimal)
+            CanvasDrawer.GetRecommendedTSPSolveTime(img.Width, img.Height);
         AppendLog($"Loaded image: {displayName} ({img.Width}x{img.Height})");
     }
 
@@ -1089,18 +1085,6 @@ public partial class MainWindow : Window
             _ = UpdatePreviewAsync();
     }
 
-    private void TSPTimeLimitUpDown_ValueChanged(
-        object? sender,
-        NumericUpDownValueChangedEventArgs e
-    )
-    {
-        if (_loadingSettings)
-            return;
-
-        _currentSettings.TspSolverTimeLimit = (float)(TSPTimeLimitUpDown.Value ?? 0.5m);
-        SaveSettings();
-    }
-
     private void ThemeMenuItem_Click(object? sender, RoutedEventArgs e)
     {
         int index = sender == ThemeLightMenuItem ? 1 : sender == ThemeDarkMenuItem ? 2 : 0;
@@ -1218,10 +1202,6 @@ public partial class MainWindow : Window
             ColourLimitUpDown.IsEnabled =
                 ColourMatcherComboBox?.SelectedValue?.ToString() == "Arbitrary";
             SelectComboBoxItem(DenoisingComboBox, _currentSettings.SelectedDenoiser);
-            EnableHomeCanvas.IsChecked = _currentSettings.AutoHomeCanvasToTopLeft;
-
-            if (_currentSettings.TspSolverTimeLimit != null)
-                TSPTimeLimitUpDown.Value = (decimal)_currentSettings.TspSolverTimeLimit.Value;
         }
         finally
         {
@@ -1444,11 +1424,6 @@ public partial class MainWindow : Window
     private void EnableHomeCanvas_IsCheckedChanged(object? sender, RoutedEventArgs e)
     {
         // TODO: Notify if non 256x256 image.
-        if (_loadingSettings)
-            return;
-
-        _currentSettings.AutoHomeCanvasToTopLeft = EnableHomeCanvas.IsChecked ?? false;
-        SaveSettings();
     }
 
     private async void OpenTelemetryPrompt_Click(object? sender, RoutedEventArgs e)
